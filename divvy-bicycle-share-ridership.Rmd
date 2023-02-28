@@ -1,0 +1,207 @@
+---
+title: "City of Chicago - Bicycle Share Ridership Analysis"
+author: "Michael Hirschberger"
+date: "2023-02-26"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Introduction
+
+This analysis acts as the capstone project for the Google Data Analytics Professional Certificate. The goal of this analysis is to identify trends in ridership data for the City of Chicago's bicycle share operator, the conclusions of which will guide the future marketing program for the company. The analysis focuses on two of the company's customer segments: members and casual riders. Customers who purchase annual memberships are members, while customers who purchase single-ride or full-day passes are considered casual riders.
+
+The financial analysts of the company have concluded that annual members are much more profitable than casual riders, and the Director of Marketing believes that increasing the number of annual members will play a key role in the company's future growth and wants to focus on converting casual riders into members. To that end, the marketing team is interested in analyzing historical bike trip data to identify trends, specifically between casual riders and members for the last 12 months. As part of this analysis, the length of bike trips and the number of trips for the bike share were compared for casual riders and members from February 2022 to January 2023. Three recommendations are provided based on the results of the analysis.
+
+The overall scenario for this project was provided by the Google Data Analytics Professional Certificate offered by Coursera. The data for this analysis were obtained from Divvy, the operator for the City of Chicago's bicycle share program, obtained at this [link](https://divvy-tripdata.s3.amazonaws.com/index.html) and was made available by Motivate International Inc. under the following [license](https://ride.divvybikes.com/data-license-agreement).
+
+The R script used in this study is based on the analysis performed in the Divvy case study "'Sophisticated, Clear, and Polished’: Divvy and Data Visualization" written by Kevin Hartman found [here](https://artscience.blog/home/divvy-dataviz-case-study). 
+
+## Installing R packages and Importing the Data
+
+First, the R packages used in this analysis were installed.
+
+```{r packages}
+library(tidyverse)
+library(lubridate)
+library(ggplot2)
+```
+
+Next, 12 datasets, representing the bicycle trip data for each month from February 2022 to January 2023, were read into R dataframes. The 12 dataframes were then bound into a single dataframe.
+
+```{r import data}
+feb_2022 <- read_csv("202202/202202-divvy-tripdata.csv")
+mar_2022 <- read_csv("202203/202203-divvy-tripdata.csv")
+apr_2022 <- read_csv("202204/202204-divvy-tripdata.csv")
+may_2022 <- read_csv("202205/202205-divvy-tripdata.csv")
+jun_2022 <- read_csv("202206/202206-divvy-tripdata.csv")
+jul_2022 <- read_csv("202207/202207-divvy-tripdata.csv")
+aug_2022 <- read_csv("202208/202208-divvy-tripdata.csv")
+sep_2022 <- read_csv("202209/202209-divvy-publictripdata.csv")
+oct_2022 <- read_csv("202210/202210-divvy-tripdata.csv")
+nov_2022 <- read_csv("202211/202211-divvy-tripdata.csv")
+dec_2022 <- read_csv("202212/202212-divvy-tripdata.csv")
+jan_2023 <- read_csv("202301/202301-divvy-tripdata.csv")
+
+trips_total <- bind_rows(feb_2022, mar_2022, apr_2022, may_2022, jun_2022, 
+                         jul_2022, aug_2022, sep_2022, oct_2022, nov_2022, dec_2022, jan_2023)
+```
+
+The combined dataset was then inspected.
+
+```{r inspect1}
+colnames(trips_total)
+```
+
+```{r inspect2}
+head(trips_total)
+```
+
+```{r inspect3}
+str(trips_total)
+```
+
+```{r inspect4}
+summary(trips_total)
+```
+
+## Cleaning the Data
+
+The data were cleaned to ensure an accurate analysis. First, the `member_casual` column was checked to ensure that only the values `member` or `casual` exist in the column, the only two types of customers that should exist in this dataset:
+
+```{r check_ridertype}
+unique(trips_total$member_casual)
+```
+
+Next, additional columns were added for date, month, day, year, and day of week for each ride, to provide more flexibility in aggregating the data.
+
+```{r add_datecolumns}
+trips_total$date <- as.Date(trips_total$started_at)
+trips_total$month <- format(trips_total$date, "%m")
+trips_total$day <- format(trips_total$date, "%d")
+trips_total$year <- format(trips_total$date, "%Y")
+trips_total$day_of_week <- format(trips_total$date, "%A")
+```
+
+A `ride_length` column was then added to the dataframe, obtained by calculating the difference between the values located in the `ended_at` and `started_at` columns.
+
+```{r add_ride_length}
+trips_total$ride_length <- difftime(trips_total$ended_at, trips_total$started_at)
+
+str(trips_total)
+```
+
+The `ride_length` column was converted to numeric so that calculations can be performed using this data.
+
+```{r ride_length_to_numeric}
+trips_total$ride_length <- as.numeric(as.character(trips_total$ride_length))
+```
+
+Finally, there were values were the `ride_length` column resulted in a negative value, which is impossible. Thus, negative values were removed from the column, and the final cleaned dataframe was assigned to a new variable `trip_total_cleaned`.
+
+```{r}
+trips_total_cleaned <- trips_total[!trips_total$ride_length < 0,]
+```
+
+## Data Analysis and Visualizations
+
+Days of the week were ordered. Then, ridership data was analyzed by rider type and day of the week.
+
+```{r}
+trips_total_cleaned$day_of_week <-ordered(trips_total_cleaned$day_of_week,levels=c("Sunday", "Monday", "Tuesday", "Wednesday", 
+                                                                                   "Thursday", "Friday", "Saturday"))
+trips_total_cleaned %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarize(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday)
+```
+
+Average trip duration was plotted vs. day of the week and customer type.
+
+```{r}
+trips_total_cleaned %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarize(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday) %>% 
+  ggplot(aes(x = weekday, y = average_duration, fill = member_casual)) + 
+  geom_col(position="dodge") + ggtitle("Average Trip Duration vs. Day of the Week and Customer Type") + 
+  xlab("Day of the Week") + ylab("Average Trip Duration (seconds)") + labs(fill="Customer Type")
+```
+
+
+Number of trips was plotted vs. day of the week and rider type.
+
+```{r}
+trips_total_cleaned %>% 
+  mutate(weekday = wday(started_at, label = TRUE)) %>% 
+  group_by(member_casual, weekday) %>% 
+  summarize(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, weekday) %>% 
+  ggplot(aes(x = weekday, y = number_of_rides, fill = member_casual)) + geom_col(position="dodge") + 
+  ggtitle("Number of Trips vs. Day of the Week and Customer Type") + 
+  xlab("Day of the Week") + ylab("Number of Trips") + labs(fill="Customer Type")
+```
+
+For the next part of the analysis, a new column `monthyear` was created that combines the month and year in a single column. The values of this column were then ordered chronologically. Ridership data was then analyzed by rider type for each month.
+
+```{r}
+trips_total_cleaned$monthyear <- format(trips_total_cleaned$started_at, "%b %Y")
+trips_total_cleaned$monthyear <- ordered(trips_total_cleaned$monthyear,levels=c("Feb 2022", "Mar 2022", "Apr 2022", "May 2022", 
+                                                                        "Jun 2022", "Jul 2022", "Aug 2022", "Sep 2022",
+                                                                        "Oct 2022", "Nov 2022", "Dec 2022", "Jan 2023"))
+trips_total_cleaned %>% 
+  group_by(member_casual, monthyear) %>% 
+  summarize(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, monthyear)
+```
+
+Average trip duration was plotted vs. month and rider type.
+
+```{r}
+trips_total_cleaned %>% 
+  group_by(member_casual, monthyear) %>% 
+  summarize(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, monthyear) %>% 
+  ggplot(aes(x = monthyear, y = average_duration, group=member_casual)) + geom_line(aes(color=member_casual)) +
+  ylim(0,2000) +
+  scale_color_discrete(name = "Customer Type") + theme(axis.text.x = element_text(angle=45,hjust=1)) + 
+  ggtitle("Average Trip Duration vs. Month and Customer Type") + xlab("Month") + ylab("Average Trip Duration (seconds)")
+```
+
+Finally, number of trips was plotted vs. month and rider type.
+
+```{r}
+trips_total_cleaned %>% 
+  group_by(member_casual, monthyear) %>% 
+  summarize(number_of_rides = n(), average_duration = mean(ride_length)) %>% 
+  arrange(member_casual, monthyear) %>% 
+  ggplot(aes(x = monthyear, y = number_of_rides, group=member_casual)) + geom_line(aes(color=member_casual)) +
+  scale_color_discrete(name = "Customer Type") + theme(axis.text.x = element_text(angle=45,hjust=1)) + 
+  ggtitle("Number of Trips vs. Month and Customer Type") + xlab("Month") + ylab("Number of Trips")
+```
+
+## Key Findings
+
+Based on the above analysis, the following key findings were observed:
+
+* The average trip duration for casual riders was significantly longer than that of members in looking both at day of the week and by month. This could make sense because casual riders who are paying per ride or per day might want to get the most use out of the bicycle to make it more cost effective for them. For members, the increased value of the annual membership comes from frequency of use, and less so on the length of each ride taken. 
+
+* The data for average trip duration for casual riders show greater variation over the days of the week and month-to-month than for members. This could be because members would be more likely to have a set routine in their bike use which is repeated on a regular basis. This would especially be the case for people who ride their bikes to and from work. Casual riders consist of different people using the bikes with different types of trips. In addition, the data show that both customer types have a longer ride duration on the weekends, with the difference being more pronounced for the casual riders.
+
+* Members have a significantly greater number of trips during the week than do casual riders, and on the weekends the numbers are roughly even. This might be because members are more likely to use the bicycle on a regular basis, like for traveling to work. Casual riders are more likely to use the bike for leisure or might be visitors to the city, and most people have more time for leisurely activities on the weekends. This could account for the increase in the number of casual rider trips on the weekends.
+
+* On a month-to-month basis, both casual riders and members have a signficantly lower number of trips during the winter/cold-weather months than during the spring and summer, which makes sense given that Chicago winters are not conducive to biking. In the previous 12 months, the months with the lowest number of trips were Feb 2022, Dec 2022, and Jan 2023, and the months with the highest number were June-Sep 2022.  
+
+## Recommendations
+
+Based on the above findings, the following three recommendations are proposed to help convert casual riders to members:
+
+1. Focus on marketing to increase ridership during the week among casual riders. Perhaps target the health benefits of regular bike riding in the evenings or benefits of using the bicycle for traveling to work. Show the customer how an annual membership would make more sense over repeat single-ride or full-day passes. 
+
+2. Ensure that a large number of bike stations are installed in convenient downtown locations near residential and commercial areas, where residents would be able to bike between work and home. This might encourage use of the bike share for commuting to work, which should increase the number of members.
+
+3. Explore organized activities, bike rides, etc. throughout the year open to members only to provide an additional incentive to obtain a membership. 
